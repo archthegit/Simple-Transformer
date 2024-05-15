@@ -86,11 +86,18 @@ def main():
     train_CLS_dataset = SpeechesClassificationDataset(tokenizer, "../speechesdataset/train_CLS.tsv")
     train_CLS_loader = DataLoader(train_CLS_dataset, batch_size=c.batch_size,collate_fn=collate_batch,shuffle=True)
 
-    inputfile = "/Users/Archana/Downloads/CSE256_PA2_SP24/speechesdataset/train_LM.txt"
+    inputfile = "../speechesdataset/train_LM.txt"
     with open(inputfile, 'r', encoding='utf-8') as f:
         lmtrainText = f.read()
     train_LM_dataset = LanguageModelingDataset(tokenizer, lmtrainText,  c.block_size)
     train_LM_loader = DataLoader(train_LM_dataset, batch_size=c.batch_size, shuffle=True)
+
+    inputTestfile = "../speechesdataset/test_LM_wbush.txt"
+    with open(inputTestfile, 'r', encoding='utf-8') as f:
+        lmtestText = f.read()
+
+    test_LM_dataset = LanguageModelingDataset(tokenizer, lmtestText,  c.block_size)
+    test_LM_loader = DataLoader(test_LM_dataset, batch_size=c.batch_size, shuffle=True)
 
 
     ########################
@@ -115,9 +122,9 @@ def main():
     for i, (xb, yb) in enumerate(train_LM_loader):
         if i >= c.max_iters:
             break
-        if i % c.eval_interval == 0:
-            losses = compute_perplexity(m, train_LM_loader, eval_iters=c.eval_iters)
-            print(f"step {iter}: train loss {losses:.4f}")
+        if i % c.eval_interval == 0 or i == c.max_iters-1:
+            losses = compute_perplexity(m, test_LM_loader, eval_iters=c.eval_iters)
+            print(f"step {i}: Perplexity: {losses:.4f}")
 
         xb, yb = xb.to(c.device), yb.to(c.device)
         
@@ -127,12 +134,10 @@ def main():
         loss.backward()
         optimizer.step()
     
+    losses = compute_perplexity(m, test_LM_loader, eval_iters=c.eval_iters)
     context = torch.zeros((1,1), dtype=torch.long, device=c.device)
     print(tokenizer.decode(m.generate(context, max_new_tokens=500)[0].tolist()))       
-
-    
- 
-
+   
 
 if __name__ == "__main__":
     main()

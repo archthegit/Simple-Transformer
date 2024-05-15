@@ -7,12 +7,17 @@ import constants as c
 
 
 class Decoder(nn.Module) :
-
     def __init__(self, vocab_size) :
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, c.n_embd)
         self.position_embedding_table = nn.Embedding(c.block_size, c.n_embd)
-        self.sa_head = Head(c.n_embd)
+        self.blocks = nn.Sequential(
+            Block(num_head=4),
+            Block(num_head=4),
+            Block(num_head=4),
+            Block(num_head=4),
+            nn.LayerNorm(c.n_embd)
+        )
         self.lm_head = nn.Linear(c.n_embd, vocab_size)
 
     def forward(self, idx, targets=None): 
@@ -21,7 +26,7 @@ class Decoder(nn.Module) :
         token_emb = self.token_embedding_table(idx) 
         pos_emb = self.position_embedding_table(torch.arange(T, device=c.device)) 
         x = token_emb + pos_emb
-        x = self.sa_head(x)
+        x = self.blocks(x)
         logits = self.lm_head(x) 
 
         if targets is None:
@@ -64,3 +69,42 @@ class Head(nn.Module) :
         v = self.value(x)
         out = weights @ v
         return out 
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, n_head, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(n_head)])
+        self.proj = nn.Linear(n_head * head_size, c.n_embd)
+    
+    def forward(self, x):
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.proj(out)
+        return out
+
+
+class FeedForward(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(c.n_embd, 4 *c.n_hidden),
+            nn.ReLU(),
+            nn.Linear(4 * c.n_hidden, c.n_embd)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+class Block(nn.Module):
+    def __init__(self, num_head):
+        super().__init__()
+        head_size = c.n_embd // num_head
+        self.sa = MultiHeadAttention(num_head, head_size)
+        self.ffwd = FeedForward()
+        self.ln1 = nn.LayerNorm(c.n_embd)
+        self.ln2 = nn.LayerNorm(c.n_embd)
+
+    def forward(self, x):
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
+        return x
