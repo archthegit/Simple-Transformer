@@ -6,6 +6,29 @@ from torch.nn import functional as F
 import constants as c
 
 
+class Encoder(nn.Module):
+    def __init__(self, vocab_size) :
+        super().__init__()
+        self.token_embedding_table = nn.Embedding(vocab_size, c.n_embd)
+        self.position_embedding_table = nn.Embedding(c.block_size, c.n_embd)
+        self.blocks = nn.Sequential(
+            Block(num_head=4, is_decoder=False),
+            Block(num_head=4, is_decoder=False),
+            Block(num_head=4, is_decoder=False),
+            Block(num_head=4, is_decoder=False),
+            nn.LayerNorm(c.n_embd)
+        )
+        self.lm_head = nn.Linear(c.n_embd, vocab_size)
+
+    def forward(self, idx): 
+        B, T = idx.shape
+        token_emb = self.token_embedding_table(idx)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=c.device))
+        x = token_emb + pos_emb
+        x = self.blocks(x)
+        return x.mean(dim=1)
+
+
 class Decoder(nn.Module) :
     def __init__(self, vocab_size) :
         super().__init__()
@@ -51,8 +74,9 @@ class Decoder(nn.Module) :
 
 
 class Head(nn.Module) :
-    def __init__(self, head_size):
+    def __init__(self, head_size, is_decoder=True):
         super().__init__()
+        self.is_decoder = is_decoder
         self.key = nn.Linear(c.n_embd, head_size, bias=False)
         self.query = nn.Linear(c.n_embd, head_size, bias=False)
         self.value = nn.Linear(c.n_embd, head_size, bias=False)
@@ -64,7 +88,8 @@ class Head(nn.Module) :
         q = self.value(x)
 
         weights = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5
-        weights = weights.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        if self.is_decoder:
+            scores = scores.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         weights = F.softmax(weights, dim=-1)
         v = self.value(x)
         out = weights @ v
@@ -72,9 +97,9 @@ class Head(nn.Module) :
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_head, head_size):
+    def __init__(self, n_head, head_size, is_decoder=True):
         super().__init__()
-        self.heads = nn.ModuleList([Head(head_size) for _ in range(n_head)])
+        self.heads = nn.ModuleList([Head(head_size, is_decoder) for _ in range(n_head)])
         self.proj = nn.Linear(n_head * head_size, c.n_embd)
     
     def forward(self, x):
@@ -84,22 +109,22 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size=c.n_embd, output_size=c.n_embd, hidden_size=4*c.n_hidden):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(c.n_embd, 4 *c.n_hidden),
+            nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(4 * c.n_hidden, c.n_embd)
+            nn.Linear(hidden_size, output_size)
         )
 
     def forward(self, x):
         return self.net(x)
 
 class Block(nn.Module):
-    def __init__(self, num_head):
+    def __init__(self, num_head, is_decoder=True):
         super().__init__()
         head_size = c.n_embd // num_head
-        self.sa = MultiHeadAttention(num_head, head_size)
+        self.sa = MultiHeadAttention(num_head, head_size, is_decoder)
         self.ffwd = FeedForward()
         self.ln1 = nn.LayerNorm(c.n_embd)
         self.ln2 = nn.LayerNorm(c.n_embd)

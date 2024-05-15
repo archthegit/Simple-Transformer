@@ -1,11 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 import os
 
 from tokenizer import SimpleTokenizer
 from dataset import SpeechesClassificationDataset, LanguageModelingDataset
-from transformer import Decoder
+from transformer import Decoder, Encoder, FeedForward
 import constants as c
 
 
@@ -43,7 +44,7 @@ def compute_classifier_accuracy(classifier, data_loader):
     total_samples = 0
     with torch.no_grad():
         for X, Y in data_loader:
-            X, Y = X.to(c.device), Y.to(c.device)
+            X, Y = X.to(c.device).float(), Y.to(c.device)
             outputs = classifier(X)
             _, predicted = torch.max(outputs.data, 1)
             total_correct += (predicted == Y).sum().item()
@@ -103,12 +104,38 @@ def main():
     ########################
     #       ENCODER        #
     ######################## 
+    encoder = Encoder(vocab_size=tokenizer.vocab_size)
+    classifier = FeedForward(input_size=c.n_input, output_size=c.n_output, hidden_size=c.n_hidden)
+    parameters = list(encoder.parameters()) + list(classifier.parameters())
+    optimizer = torch.optim.AdamW(parameters, lr=c.learning_rate)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.1)
 
      # for the classification  task, you will train for a fixed number of epochs like this:
     for epoch in range(c.epochs_CLS):
+        encoder.train()
+        classifier.train()
+        total_loss = 0
         for xb, yb in train_CLS_loader:
             xb, yb = xb.to(c.device), yb.to(c.device)
             # CLS training code here
+            optimizer.zero_grad()
+
+            embeddings = encoder(xb)
+            logits = classifier(embeddings)
+            loss = F.cross_entropy(logits, yb)
+
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(parameters, 1.0)
+            optimizer.step()
+            scheduler.step()
+
+            total_loss += loss.item()
+
+        avg_loss = total_loss / len(train_CLS_loader)
+        print(f'Epoch {epoch + 1}, Loss: {avg_loss:.4f}')
+    
+    train_accuracy = compute_classifier_accuracy(classifier, train_CLS_loader)
+    print(f'Train Accuracy: {train_accuracy:.2f}%')
 
 
     ########################
