@@ -5,6 +5,7 @@ import os
 
 from tokenizer import SimpleTokenizer
 from dataset import SpeechesClassificationDataset, LanguageModelingDataset
+from transformer import BigramLanguageModel
 
 
 seed = 42
@@ -102,19 +103,24 @@ def compute_perplexity(decoderLMmodel, data_loader, eval_iters=100):
 def main():
 
     print("Loading data and creating tokenizer ...")
-    texts = load_texts('speechesdataset')
+
+    texts = load_texts('../speechesdataset')
     tokenizer = SimpleTokenizer(' '.join(texts)) # create a tokenizer from the data
     print("Vocabulary size is", tokenizer.vocab_size)
 
-    train_CLS_dataset = SpeechesClassificationDataset(tokenizer, "speechesdataset/train_CLS.tsv")
+    train_CLS_dataset = SpeechesClassificationDataset(tokenizer, "../speechesdataset/train_CLS.tsv")
     train_CLS_loader = DataLoader(train_CLS_dataset, batch_size=batch_size,collate_fn=collate_batch,shuffle=True)
 
-  
-    inputfile = "speechesdataset/train_LM.txt"
+    inputfile = "/Users/Archana/Downloads/CSE256_PA2_SP24/speechesdataset/train_LM.txt"
     with open(inputfile, 'r', encoding='utf-8') as f:
         lmtrainText = f.read()
     train_LM_dataset = LanguageModelingDataset(tokenizer, lmtrainText,  block_size)
     train_LM_loader = DataLoader(train_LM_dataset, batch_size=batch_size, shuffle=True)
+
+    stoi = { ch:i for i,ch in enumerate(texts) }
+    itos = { i:ch for i,ch in enumerate(texts) }
+    encode = lambda s: [stoi[c] for c in s]
+    decode = lambda l: ''.join([itos[i] for i in l])
 
      # for the classification  task, you will train for a fixed number of epochs like this:
     for epoch in range(epochs_CLS):
@@ -123,16 +129,37 @@ def main():
             # CLS training code here
 
 
+    ########################
+    #       DECODER        #
+    ######################## 
+
+    m = BigramLanguageModel(vocab_size=tokenizer.vocab_size)
+    optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
+
     # for the language modeling task, you will iterate over the training data for a fixed number of iterations like this:
     for i, (xb, yb) in enumerate(train_LM_loader):
         if i >= max_iters:
             break
+        if i % eval_interval == 0:
+            losses = compute_perplexity(m, train_LM_loader, eval_iters=eval_iters)
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+            
         xb, yb = xb.to(device), yb.to(device)
+        
         # LM training code here
+        logits, loss = m(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+    
+    context = torch.zeros((1,1), dtype=torch.long, device=device)
+            
 
     
-
+ 
 
 
 if __name__ == "__main__":
     main()
+
+
