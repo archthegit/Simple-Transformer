@@ -4,6 +4,7 @@ import torch.nn
 import torch.nn as nn
 from torch.nn import functional as F
 import constants as c
+import numpy as np
 
 
 class Encoder(nn.Module):
@@ -18,15 +19,23 @@ class Encoder(nn.Module):
             Block(num_head=4, is_decoder=False),
             nn.LayerNorm(c.n_embd)
         )
-        self.lm_head = nn.Linear(c.n_embd, vocab_size)
+        # self.lm_head = nn.Linear(c.n_embd, 3)
+        self.classifier = FeedForward(c.n_input, c.n_output, c.n_hidden)
 
     def forward(self, idx): 
         B, T = idx.shape
+        # print("called")
         token_emb = self.token_embedding_table(idx)
         pos_emb = self.position_embedding_table(torch.arange(T, device=c.device))
+        # print(np.shape(x))
         x = token_emb + pos_emb
         x = self.blocks(x)
-        return x.mean(dim=1)
+        # B, T, C = x.shape
+        # x = x.view(B*T, C)
+        # print(np.shape(x))
+        x = x.mean(dim=-2)
+        x = self.classifier(x) 
+        return x
 
 
 class Decoder(nn.Module) :
@@ -89,7 +98,7 @@ class Head(nn.Module) :
 
         weights = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5
         if self.is_decoder:
-            scores = scores.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+            weights = weights.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         weights = F.softmax(weights, dim=-1)
         v = self.value(x)
         out = weights @ v
