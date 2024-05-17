@@ -9,6 +9,7 @@ from dataset import SpeechesClassificationDataset, LanguageModelingDataset
 from transformer import Decoder, Encoder
 import constants as c
 from utilities import Utilities
+import sys
 
 
 def load_texts(directory):
@@ -107,10 +108,18 @@ def main():
     test_LM_dataset = LanguageModelingDataset(tokenizer, lmtestText,  c.block_size)
     test_LM_loader = DataLoader(test_LM_dataset, batch_size=c.batch_size, shuffle=True)
 
+    if sys.argv[1]=="part1":
+        runPart1(tokenizer, train_CLS_loader, test_CLS_loader)
+    elif sys.argv[1]=="part2":
+        runPart2(tokenizer, train_LM_loader, test_LM_loader)
+    else:
+        runPart3()
 
-    ########################
-    #       ENCODER        #
-    ######################## 
+
+########################
+#       ENCODER        #
+######################## 
+def runPart1(tokenizer, train_CLS_loader, test_CLS_loader):
     encoder = Encoder(vocab_size=tokenizer.vocab_size)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(encoder.parameters(), lr=c.learning_rate)
@@ -145,10 +154,11 @@ def main():
     sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size)
 
 
-    ########################
-    #       DECODER        #
-    ######################## 
 
+########################
+#       DECODER        #
+######################## 
+def runPart2(tokenizer, train_LM_loader, test_LM_loader):
     decoder = Decoder(vocab_size=tokenizer.vocab_size)
     optimizer = torch.optim.AdamW(decoder.parameters(), lr=c.learning_rate)
 
@@ -178,6 +188,14 @@ def main():
 
     sanity_helper = Utilities(tokenizer, decoder)
     sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size, is_decoder=True)
+
+
+########################
+#     EXPLORATION      #
+######################## 
+def runPart3():
+    print("NOT IMPLEMENTED")
+
 
 if __name__ == "__main__":
     main()
