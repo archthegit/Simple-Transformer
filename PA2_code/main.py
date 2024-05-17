@@ -6,9 +6,9 @@ import os
 
 from tokenizer import SimpleTokenizer
 from dataset import SpeechesClassificationDataset, LanguageModelingDataset
-from transformer import Decoder, Encoder, FeedForward
+from transformer import Decoder, Encoder
 import constants as c
-import numpy as np
+from utilities import Utilities
 
 
 def load_texts(directory):
@@ -46,7 +46,7 @@ def compute_classifier_accuracy(classifier, data_loader):
     with torch.no_grad():
         for X, Y in data_loader:
             X, Y = X.to(c.device), Y.to(c.device)
-            outputs = classifier(X)
+            outputs, _ = classifier(X)
             # print(np.shape(outputs))
             _, predicted = torch.max(outputs.data, 1)
             total_correct += (predicted == Y).sum().item()
@@ -67,7 +67,7 @@ def compute_perplexity(decoderLMmodel, data_loader, eval_iters=100):
     total_loss = 0
     for X, Y in data_loader:
         X, Y = X.to(c.device), Y.to(c.device)
-        logits, loss = decoderLMmodel(X, Y) # your model should be computing the cross entropy loss
+        _, loss, _ = decoderLMmodel(X, Y) # your model should be computing the cross entropy loss
         losses.append(loss.item())
         total_loss += loss.item()
         if len(losses) >= eval_iters: break
@@ -90,6 +90,9 @@ def main():
 
     train_CLS_dataset = SpeechesClassificationDataset(tokenizer, "../speechesdataset/train_CLS.tsv")
     train_CLS_loader = DataLoader(train_CLS_dataset, batch_size=c.batch_size,collate_fn=collate_batch,shuffle=True)
+
+    test_CLS_dataset = SpeechesClassificationDataset(tokenizer, "../speechesdataset/test_CLS.tsv")
+    test_CLS_loader = DataLoader(test_CLS_dataset, batch_size=c.batch_size,collate_fn=collate_batch,shuffle=True)
 
     inputfile = "../speechesdataset/train_LM.txt"
     with open(inputfile, 'r', encoding='utf-8') as f:
@@ -120,7 +123,7 @@ def main():
             xb, yb = xb.to(c.device), yb.to(c.device)
             optimizer.zero_grad()
 
-            logits = encoder(xb)
+            logits, _ = encoder(xb)
             loss = loss_fn(logits, yb)
 
             loss.backward()
@@ -131,37 +134,50 @@ def main():
         avg_loss = total_loss / len(train_CLS_loader)
         print(f'Epoch {epoch + 1}, Loss: {avg_loss:.4f}')
     
-    train_accuracy = compute_classifier_accuracy(encoder, train_CLS_loader)
-    print(f'Train Accuracy: {train_accuracy:.2f}%')
+    test_accuracy = compute_classifier_accuracy(encoder, test_CLS_loader)
+    print(f'Test Accuracy: {test_accuracy:.2f}%')
+
+    ########################
+    # SANITY CHECK ENCODER #
+    ######################## 
+
+    sanity_helper = Utilities(tokenizer, encoder)
+    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size)
 
 
     ########################
     #       DECODER        #
     ######################## 
 
-    m = Decoder(vocab_size=tokenizer.vocab_size)
-    optimizer = torch.optim.AdamW(m.parameters(), lr=c.learning_rate)
+    decoder = Decoder(vocab_size=tokenizer.vocab_size)
+    optimizer = torch.optim.AdamW(decoder.parameters(), lr=c.learning_rate)
 
     # for the language modeling task, you will iterate over the training data for a fixed number of iterations like this:
     for i, (xb, yb) in enumerate(train_LM_loader):
         if i >= c.max_iters:
             break
         if i % c.eval_interval == 0 or i == c.max_iters-1:
-            losses = compute_perplexity(m, test_LM_loader, eval_iters=c.eval_iters)
+            losses = compute_perplexity(decoder, test_LM_loader, eval_iters=c.eval_iters)
             print(f"step {i}: Perplexity: {losses:.4f}")
 
         xb, yb = xb.to(c.device), yb.to(c.device)
         
         # LM training code here
-        logits, loss = m(xb, yb)
+        logits, loss, _ = decoder(xb, yb)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
     
-    losses = compute_perplexity(m, test_LM_loader, eval_iters=c.eval_iters)
+    losses = compute_perplexity(decoder, test_LM_loader, eval_iters=c.eval_iters)
     context = torch.zeros((1,1), dtype=torch.long, device=c.device)
-    print(tokenizer.decode(m.generate(context, max_new_tokens=500)[0].tolist()))       
+    print(tokenizer.decode(decoder.generate(context, max_new_tokens=500)[0].tolist()))       
    
+    ########################
+    # SANITY CHECK DECODER #
+    ######################## 
+
+    sanity_helper = Utilities(tokenizer, decoder)
+    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size, is_decoder=True)
 
 if __name__ == "__main__":
     main()
