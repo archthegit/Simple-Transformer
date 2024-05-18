@@ -1,13 +1,10 @@
-# add all  your Encoder and Decoder code here
-
 import torch.nn
 import torch.nn as nn
 from torch.nn import functional as F
 import constants as c
-import numpy as np
 
 
-class Encoder(nn.Module):
+class ImprovedPerfEncoder(nn.Module):
     def __init__(self, vocab_size):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, c.n_embd)
@@ -34,55 +31,6 @@ class Encoder(nn.Module):
 
         return logits, attn_maps_tensor
 
-
-class Decoder(nn.Module):
-    def __init__(self, vocab_size):
-        super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, c.n_embd)
-        self.position_embedding_table = nn.Embedding(c.block_size, c.n_embd)
-        self.blocks = nn.ModuleList([Block(num_head=4, is_decoder=True) for _ in range(4)])
-        self.ln = nn.LayerNorm(c.n_embd)
-        self.lm_head = nn.Linear(c.n_embd, vocab_size)
-
-    def forward(self, idx, targets=None):
-        B, T = idx.shape
-        token_emb = self.token_embedding_table(idx)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=c.device))
-        x = token_emb + pos_emb
-
-        all_attn_maps = []
-        for block in self.blocks:
-            x, attn_maps = block(x)
-            all_attn_maps.extend(attn_maps)
-        
-        x = self.ln(x)
-        logits = self.lm_head(x)
-
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B*T, C)
-            targets = targets.view(B*T)
-            loss = F.cross_entropy(logits, targets)
-
-        # Convert the list of attention maps to a tensor
-        attn_maps_tensor = torch.stack(all_attn_maps)
-        
-        return logits, loss, attn_maps_tensor
-
-    def generate(self, idx, max_new_tokens):
-        for _ in range(max_new_tokens):
-            idx_cond = idx[:, -c.block_size:]
-            logits, _, _ = self(idx_cond)
-            logits = logits[:, -1, :]
-            probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
-            idx = torch.cat((idx, idx_next), dim=1)
-        return idx
-
-
-
 class Head(nn.Module):
     def __init__(self, head_size, is_decoder=True):
         super().__init__()
@@ -90,6 +38,7 @@ class Head(nn.Module):
         self.key = nn.Linear(c.n_embd, head_size, bias=False)
         self.query = nn.Linear(c.n_embd, head_size, bias=False)
         self.value = nn.Linear(c.n_embd, head_size, bias=False)
+        self.dropout = nn.Dropout(c.dropout)
         self.register_buffer('tril', torch.tril(torch.ones(c.block_size, c.block_size)))
 
     def forward(self, x):
@@ -102,6 +51,7 @@ class Head(nn.Module):
         if self.is_decoder:
             weights = weights.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         weights = F.softmax(weights, dim=-1)
+        weights = self.dropout(weights)
         out = weights @ v
 
         return out, weights
@@ -112,6 +62,7 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size, is_decoder) for _ in range(n_head)])
         self.proj = nn.Linear(n_head * head_size, c.n_embd)
+        self.dropout = nn.Dropout(c.dropout)
     
     def forward(self, x):
         outputs = []
@@ -122,7 +73,7 @@ class MultiHeadAttention(nn.Module):
             attn_maps.append(weights)
         
         out = torch.cat(outputs, dim=-1)
-        out = self.proj(out)
+        out = self.dropout(self.proj(out))
         return out, attn_maps
 
 
@@ -131,8 +82,9 @@ class FeedForward(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, output_size)
+            nn.ELU(),
+            nn.Linear(hidden_size, output_size),
+            nn.Dropout(c.dropout),
         )
 
     def forward(self, x):

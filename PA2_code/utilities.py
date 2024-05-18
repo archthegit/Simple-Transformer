@@ -35,7 +35,7 @@ class Utilities:
             total_prob_over_rows = torch.sum(attn_map[0], dim=1)
             if torch.any(total_prob_over_rows < 0.99) or torch.any(total_prob_over_rows > 1.01):
                 print("Failed normalization test: probabilities do not sum to 1.0 over rows")
-                print("Total probability over rows:", total_prob_over_rows.numpy())
+                print("Total probability over rows:", total_prob_over_rows.detach().numpy())
 
             # Create a heatmap of the attention map
             fig, ax = plt.subplots()
@@ -51,7 +51,7 @@ class Utilities:
                 plt.savefig(f"./images/attention_map_encoder{j + 1}.png")
             
             # Show the plot
-            plt.show()
+            #plt.show()
             
 
 

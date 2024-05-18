@@ -7,9 +7,12 @@ import os
 from tokenizer import SimpleTokenizer
 from dataset import SpeechesClassificationDataset, LanguageModelingDataset
 from transformer import Decoder, Encoder
+from transformer_enhanced import EnhancedEncoder
+from encoder_perf_exploration import ImprovedPerfEncoder
 import constants as c
 from utilities import Utilities
 import sys
+from torch.optim.lr_scheduler import StepLR
 
 
 def load_texts(directory):
@@ -113,7 +116,7 @@ def main():
     elif sys.argv[1]=="part2":
         runPart2(tokenizer, train_LM_loader, test_LM_loader)
     else:
-        runPart3()
+        runPart3(tokenizer, train_CLS_loader, test_CLS_loader)
 
 
 ########################
@@ -193,8 +196,72 @@ def runPart2(tokenizer, train_LM_loader, test_LM_loader):
 ########################
 #     EXPLORATION      #
 ######################## 
-def runPart3():
-    print("NOT IMPLEMENTED")
+def runPart3(tokenizer, train_CLS_loader, test_CLS_loader):
+    # enhanced_encoder = EnhancedEncoder(vocab_size=tokenizer.vocab_size)
+    # loss_fn = torch.nn.CrossEntropyLoss()
+    # enahnced_optimizer = torch.optim.AdamW(enhanced_encoder.parameters(), lr=c.learning_rate)
+
+    # # #  for the classification  task, you will train for a fixed number of epochs like this:
+    # for epoch in range(c.epochs_CLS):
+    #     enhanced_encoder.train()
+    #     total_loss = 0
+    #     for xb, yb in train_CLS_loader:
+    #         xb, yb = xb.to(c.device), yb.to(c.device)
+    #         enahnced_optimizer.zero_grad()
+
+    #         logits, _ = enhanced_encoder(xb)
+    #         loss = loss_fn(logits, yb)
+
+    #         loss.backward()
+    #         enahnced_optimizer.step()
+
+    #         total_loss += loss.item()
+
+    #     avg_loss = total_loss / len(train_CLS_loader)
+    #     print(f'Epoch {epoch + 1}, Loss: {avg_loss:.4f}')
+    
+    # test_accuracy = compute_classifier_accuracy(enhanced_encoder, test_CLS_loader)
+    # print(f'Test Accuracy: {test_accuracy:.2f}%')
+
+    ########################
+    #   PERF IMPROVEMENT   #
+    ######################## 
+    improved_perf_encoder = ImprovedPerfEncoder(vocab_size=tokenizer.vocab_size)
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(improved_perf_encoder.parameters(), lr=c.learning_rate, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
+
+    # #  for the classification  task, you will train for a fixed number of epochs like this:
+    for epoch in range(c.epochs_CLS):
+        improved_perf_encoder.train()
+        total_loss = 0
+        for xb, yb in train_CLS_loader:
+            xb, yb = xb.to(c.device), yb.to(c.device)
+            optimizer.zero_grad()
+
+            logits, _ = improved_perf_encoder(xb)
+            loss = loss_fn(logits, yb)
+
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+        avg_loss = total_loss / len(train_CLS_loader)
+        print(f'Epoch {epoch + 1}, Loss: {avg_loss:.4f}')
+
+    scheduler.step(avg_loss)
+    
+    test_accuracy = compute_classifier_accuracy(improved_perf_encoder, test_CLS_loader)
+    print(f'Test Accuracy: {test_accuracy:.2f}%')
+
+    ########################
+    # SANITY CHECK ENCODER #
+    ######################## 
+
+    sanity_helper = Utilities(tokenizer, improved_perf_encoder)
+    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size)
+    return
 
 
 if __name__ == "__main__":
