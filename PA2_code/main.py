@@ -104,7 +104,7 @@ def main():
     train_LM_dataset = LanguageModelingDataset(tokenizer, lmtrainText,  c.block_size)
     train_LM_loader = DataLoader(train_LM_dataset, batch_size=c.batch_size, shuffle=True)
 
-    inputTestfile = "../speechesdataset/test_LM_obama.txt"
+    inputTestfile = "../speechesdataset/test_LM_wbush.txt"
     with open(inputTestfile, 'r', encoding='utf-8') as f:
         lmtestText = f.read()
 
@@ -154,7 +154,7 @@ def runPart1(tokenizer, train_CLS_loader, test_CLS_loader):
     ######################## 
 
     sanity_helper = Utilities(tokenizer, encoder)
-    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size)
+    sanity_helper.sanity_check(sentence="the quick brown fox jumped over the moon", block_size=c.block_size)
 
 
 
@@ -190,7 +190,7 @@ def runPart2(tokenizer, train_LM_loader, test_LM_loader):
     ######################## 
 
     sanity_helper = Utilities(tokenizer, decoder)
-    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size, is_decoder=True)
+    sanity_helper.sanity_check(sentence="the quick brown fox jumped over the moon", block_size=c.block_size, is_decoder=True)
 
 
 ########################
@@ -232,7 +232,7 @@ def runPart3(tokenizer, train_CLS_loader, test_CLS_loader):
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
 
     # #  for the classification  task, you will train for a fixed number of epochs like this:
-    for epoch in range(c.epochs_CLS):
+    for epoch in range(20):
         improved_perf_encoder.train()
         total_loss = 0
         for xb, yb in train_CLS_loader:
@@ -254,14 +254,6 @@ def runPart3(tokenizer, train_CLS_loader, test_CLS_loader):
     
     test_accuracy = compute_classifier_accuracy(improved_perf_encoder, test_CLS_loader)
     print(f'Test Accuracy: {test_accuracy:.2f}%')
-
-    ########################
-    # SANITY CHECK ENCODER #
-    ######################## 
-
-    sanity_helper = Utilities(tokenizer, improved_perf_encoder)
-    sanity_helper.sanity_check(sentence="THIS IS A TEST", block_size=c.block_size)
-    return
 
 
 if __name__ == "__main__":

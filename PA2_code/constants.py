@@ -14,7 +14,6 @@ n_head = 2  # Number of attention heads
 n_layer = 4  # Number of transformer layers
 dropout = 0
 
-
 eval_interval = 100  # How often to evaluate train and test perplexity during training
 max_iters = 500 # For language modeling, we can process all the batches for the entire dataset, but that takes a while, so we'll limit it to 500 iterations. For batch size of 16 and block size of  32, this is roughly, this is  500 * 16 * 32 = 256000 tokens, SOTA LMs are trained on trillions of tokens, so this is a very small dataset.
 eval_iters = 200  # Number of iterations to evaluate perplexity on the test set
